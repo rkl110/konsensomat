@@ -8,6 +8,7 @@
 /konsensomat.exe
 /konsensomat-arm64
 /konsensomat-armv7
+/konsensomat-darwin-arm64
 /dist/
 /pkg/
 *.zip
@@ -18,3 +19,6 @@
 
 # OS
 .DS_Store
+
+# Dev Containers (auto-generated feature lockfile)
+.devcontainer/devcontainer-lock.json

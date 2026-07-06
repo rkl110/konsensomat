@@ -4,3 +4,4 @@ files/data/*
 konsensomat.exe
 konsensomat-arm64
 konsensomat-armv7
+konsensomat-darwin-arm64

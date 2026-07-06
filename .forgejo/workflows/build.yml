@@ -1,7 +1,13 @@
 name: build
 
+# Fast feedback for regular commits/PRs: just test and build for Linux
+# amd64. The full multi-platform build (Windows, RPi, macOS) only happens
+# on a version tag, via release.yml - `branches: ['**']` excludes tag
+# pushes here so the two workflows don't both run on `git push --tags`.
 on:
   push:
+    branches:
+      - '**'
   pull_request:
 
 jobs:
@@ -40,55 +46,12 @@ jobs:
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "Building version: ${VERSION}"
 
-      - name: Build binaries
-        run: |
-          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64         go build -ldflags="-X main.version=${VERSION}" -o konsensomat . &
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64         go build -ldflags="-X main.version=${VERSION}" -o konsensomat.exe . &
-          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64         go build -ldflags="-X main.version=${VERSION}" -o konsensomat-arm64 . &
-          CGO_ENABLED=0 GOOS=linux   GOARCH=arm   GOARM=7 go build -ldflags="-X main.version=${VERSION}" -o konsensomat-armv7 . &
-          wait
-
-      - name: Assemble artifacts
-        run: |
-          mkdir -p dist/linux-amd64 dist/linux-arm64 dist/linux-armv7 dist/windows-amd64
-
-          cp konsensomat                                               dist/linux-amd64/
-          cp konsensomat-arm64                                         dist/linux-arm64/konsensomat
-          cp konsensomat-armv7                                         dist/linux-armv7/konsensomat
-          chmod +x dist/linux-amd64/konsensomat dist/linux-arm64/konsensomat dist/linux-armv7/konsensomat
-
-          cp konsensomat.exe                                           dist/windows-amd64/
-
-          for dir in dist/linux-amd64 dist/linux-arm64 dist/linux-armv7; do
-            cp Dockerfile Dockerfile.alpine docker-compose.yml .env.example README.md LICENSE "$dir/"
-          done
-
-          cp .env.example README.md LICENSE dist/windows-amd64/
+      - name: Build (Linux amd64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-X main.version=${VERSION}" -o konsensomat .
 
       - name: Upload Linux amd64
         uses: actions/upload-artifact@v3
         with:
           name: konsensomat-linux-amd64
-          path: dist/linux-amd64/
-          retention-days: 7
-
-      - name: Upload Linux arm64
-        uses: actions/upload-artifact@v3
-        with:
-          name: konsensomat-linux-arm64
-          path: dist/linux-arm64/
-          retention-days: 7
-
-      - name: Upload Linux armv7
-        uses: actions/upload-artifact@v3
-        with:
-          name: konsensomat-linux-armv7
-          path: dist/linux-armv7/
-          retention-days: 7
-
-      - name: Upload Windows amd64
-        uses: actions/upload-artifact@v3
-        with:
-          name: konsensomat-windows-amd64
-          path: dist/windows-amd64/
+          path: konsensomat
           retention-days: 7

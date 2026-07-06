@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -73,12 +74,49 @@ func (rl *rateLimiter) sweepLoop() {
 	}
 }
 
-// clientIP extracts the connecting IP for rate-limit bucketing.
+// clientIP extracts the client's IP for rate-limit bucketing (and request
+// logging). By default this is simply the address the connection came in
+// on. If that address belongs to a configured trusted proxy (see
+// KONSENSOMAT_TRUSTED_PROXIES), the real client is instead read from
+// X-Forwarded-For - scanned right to left, skipping any entries that are
+// themselves trusted proxies, so a chain of known proxies (e.g. CDN + load
+// balancer) resolves to the original client rather than the nearest hop -
+// falling back to X-Real-IP if X-Forwarded-For is absent. Untrusted
+// connections always use the raw address: X-Forwarded-For is just a request
+// header, trivially set by anyone who can reach the server directly, so
+// honoring it without knowing the request actually passed through a
+// trusted proxy would let an attacker pick their own rate-limit bucket.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
+
+	if len(trustedProxies) == 0 {
+		return host
+	}
+	if ip := net.ParseIP(host); ip == nil || !isTrustedProxy(ip) {
+		return host
+	}
+
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			candidate := strings.TrimSpace(parts[i])
+			ip := net.ParseIP(candidate)
+			if ip == nil {
+				continue
+			}
+			if !isTrustedProxy(ip) {
+				return candidate
+			}
+		}
+	}
+
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		return realIP
+	}
+
 	return host
 }
 

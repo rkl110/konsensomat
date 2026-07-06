@@ -1,8 +1,8 @@
 {
   "name": "KonsensOmat",
 
-  // Go 1.24 dev image — includes gopls, delve, and all standard Go tools.
-  "image": "mcr.microsoft.com/devcontainers/go:1.24",
+  // Go 1.26 dev image — includes gopls, delve, and all standard Go tools.
+  "image": "mcr.microsoft.com/devcontainers/go:1.26",
   "remoteUser": "vscode",
 
   "features": {

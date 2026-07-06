@@ -55,6 +55,13 @@ jobs:
           cp .env.example LICENSE README.md pkg/windows-amd64/
           cd pkg/windows-amd64 && zip -r ../../konsensomat-${VERSION}-windows-amd64.zip . && cd ../..
 
+          # macOS Apple Silicon (arm64)
+          mkdir -p pkg/darwin-arm64
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-X main.version=${VERSION}" -o pkg/darwin-arm64/konsensomat .
+          chmod +x pkg/darwin-arm64/konsensomat
+          cp Dockerfile Dockerfile.alpine docker-compose.yml .env.example LICENSE README.md pkg/darwin-arm64/
+          cd pkg/darwin-arm64 && zip -r ../../konsensomat-${VERSION}-darwin-arm64.zip . && cd ../..
+
       - name: Create release and upload assets
         env:
           VERSION: ${{ github.ref_name }}
@@ -71,7 +78,8 @@ jobs:
             konsensomat-${VERSION}-linux-amd64.zip \
             konsensomat-${VERSION}-linux-arm64.zip \
             konsensomat-${VERSION}-linux-armv7.zip \
-            konsensomat-${VERSION}-windows-amd64.zip; do
+            konsensomat-${VERSION}-windows-amd64.zip \
+            konsensomat-${VERSION}-darwin-arm64.zip; do
             curl -sf -X POST \
               -H "Authorization: token ${GH_TOKEN}" \
               -H "Content-Type: application/octet-stream" \

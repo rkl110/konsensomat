@@ -153,6 +153,12 @@ func main() {
 		expiryDays = maxExpiryDays
 	}
 
+	proxies, err := parseTrustedProxies(envOr("KONSENSOMAT_TRUSTED_PROXIES", ""))
+	if err != nil {
+		errorLog.Fatalf("KONSENSOMAT_TRUSTED_PROXIES: %v", err)
+	}
+	trustedProxies = proxies
+
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		errorLog.Fatalf("data dir %q: %v", dataDir, err)
 	}

@@ -1,4 +1,8 @@
+
+
 # Der KonsensOmat
+
+> **Fork-Hinweis:** Dies ist ein Fork von [OpenKunde/konsensomat](https://github.com/OpenKunde/konsensomat) (PHP). Diese Version wurde vollständig nach Go portiert und seitdem eigenständig weiterentwickelt.
 
 KonsensOmat ist ein schlankes Open-Source-Tool zur Entscheidungsfindung nach dem Prinzip des
 Systemic Consensing (Systemisches Konsensieren, SK):
@@ -22,6 +26,10 @@ Die Option mit dem geringsten Gesamtwiderstand gilt als tragfähigste Lösung.
 - Nur Erstellerin/Ersteller (und optional Admins) können eine Umfrage löschen – nicht jede Person mit dem Link
 - Keine externen Dienste oder Tracker
 - Light- und Dark-Mode (folgt der Systemeinstellung, manuell umschaltbar)
+- Öffentliche Statistik-Seite (`/statistik`) mit Aktivitäts-Heatmap der letzten 180 Tage
+- Rate-Limiting gegen wiederholtes Passwort-Raten (Umfrage- und Admin-Login)
+- Sicherheits-Header (CSP, X-Frame-Options, HSTS, …) und CSRF-Schutz für alle Formulare
+- Infoseiten zu systemischem Konsensieren, Impressum und Datenschutz
 
 ---
 
@@ -37,7 +45,7 @@ Die Option mit dem geringsten Gesamtwiderstand gilt als tragfähigste Lösung.
 Repository klonen:
 
 ```bash
-git clone https://github.com/OpenKunde/konsensomat.git
+git clone https://github.com/rkl110/konsensomat.git
 cd konsensomat
 ```
 
@@ -71,6 +79,7 @@ KONSENSOMAT_ADDR=:8080 KONSENSOMAT_DATA_DIR=files/data KONSENSOMAT_EXPIRY_DAYS=1
 | `KONSENSOMAT_DATA_DIR`        | `files/data`  | Verzeichnis für die Umfrage-JSON-Dateien           |
 | `KONSENSOMAT_EXPIRY_DAYS`     | `7`           | Maximale und vorausgewählte Laufzeit einer Umfrage in Tagen (max. 365) |
 | `KONSENSOMAT_ADMIN_PASSWORD`  | *(leer = aus)*| Admin-Passwort für `/admin` (siehe [Zugriffsschutz & Löschen](#zugriffsschutz--löschen)) |
+| `KONSENSOMAT_TRUSTED_PROXIES` | *(leer)*      | Vertrauenswürdige Reverse-Proxy-IPs/-CIDRs (siehe [Hinter einem Reverse-Proxy betreiben](#hinter-einem-reverse-proxy-betreiben)) |
 
 ### Konfiguration über `.env`
 
@@ -85,6 +94,7 @@ KONSENSOMAT_ADDR=:8080
 KONSENSOMAT_DATA_DIR=files/data
 KONSENSOMAT_EXPIRY_DAYS=7
 #KONSENSOMAT_ADMIN_PASSWORD=
+#KONSENSOMAT_TRUSTED_PROXIES
 ```
 
 Bereits gesetzte echte Umgebungsvariablen haben immer Vorrang vor der `.env`-Datei. Die `.env` selbst wird nicht versioniert (siehe `.gitignore`).
@@ -115,11 +125,15 @@ Eine Umfrage kann also, ob mit oder ohne Passwort, immer nur von der Erstellerin
 
 **Passwort, Frage/Vorschläge und Laufzeit nachträglich ändern:** Wer verwalten darf (Erstellerin/Ersteller oder Admin), sieht auf der Umfrageseite einen (standardmäßig eingeklappten, per Klick aufklappbaren) Verwaltungsbereich, über den sich jederzeit das Passwort setzen/ändern/entfernen, die Frage samt Vorschlägen korrigieren und die verbleibende Laufzeit verlängern oder verkürzen lässt (weiterhin begrenzt auf `KONSENSOMAT_EXPIRY_DAYS`).
 
+**Statistik-Seite:** `/statistik` ist ohne Anmeldung für alle einsehbar und zeigt ausschließlich aggregierte Nutzungszahlen (aktive Umfragen, davon gültig/ungültig, bald ablaufend, durchschnittliche/maximale Teilnehmerzahl) sowie eine Aktivitäts-Heatmap: eine Zelle pro Tag der letzten 180 Tage, eingefärbt nach der Anzahl an diesem Tag erstellter gültiger Umfragen (≥ 2 Teilnehmer*innen). Es werden dabei nie Inhalte oder Links einzelner Umfragen preisgegeben.
+
 **Admins:** Ist `KONSENSOMAT_ADMIN_PASSWORD` gesetzt, können sich Admins unter `/admin` anmelden und danach jede Umfrage einsehen, verwalten und löschen – unabhängig von deren eigenem Passwort. Auf der Statistik-Seite (`/statistik`) sehen angemeldete Admins zusätzlich eine Liste aller aktiven Umfragen (Frage, Teilnehmerzahl, Ablaufdatum) mit direktem Link zur Verwaltung – ohne Admin-Login bleiben Umfragen weiterhin nur über ihren eigenen Link erreichbar. Das ist als Moderations-Werkzeug gedacht (z.B. um eine gemeldete, missbräuchliche Umfrage zu entfernen), nicht als reguläres Nutzerkonto. Ohne gesetztes Admin-Passwort ist die Funktion vollständig deaktiviert.
 
 **Laufzeit:** Beim Erstellen wählt die Erstellerin/der Ersteller, wie viele Tage die Umfrage laufen soll (maximal `KONSENSOMAT_EXPIRY_DAYS`, das ist auch die Vorauswahl). Nach Ablauf wird die Umfrage automatisch gelöscht – unabhängig von Löschrecht oder Passwort.
 
 Es gibt bewusst kein Nutzerkonto und keine Passwort-Wiederherstellung – gehen sowohl das Berechtigungs-Cookie als auch ein gesetztes Passwort verloren und ist kein Admin-Passwort konfiguriert, lässt sich die Umfrage nur noch über ihre automatische Löschung nach Ablauf der gewählten Laufzeit entfernen.
+
+**Brute-Force-Schutz:** Falsche Passwort-Versuche (Umfrage- oder Admin-Passwort, über Web-UI oder API) werden pro Client-IP gezählt; nach 10 Fehlversuchen innerhalb von 5 Minuten wird diese IP für den jeweiligen Endpunkt vorübergehend gesperrt (HTTP 429). Erfolgreiche Versuche und Anfragen ganz ohne Passwort zählen nicht mit.
 
 ---
 
@@ -184,6 +198,20 @@ Schreibrechte für `files/data` vergeben (bzw. `KONSENSOMAT_DATA_DIR` auf ein be
 
 Die Anwendung loggt ausschließlich nach stdout/stderr (kein Log-File) - normale Betriebsmeldungen (Start, eine Zeile pro Request mit Client-IP, Methode, Pfad, Status und Dauer) gehen nach stdout, Fehler nach stderr. Das lässt sich mit den üblichen Bordmitteln trennen bzw. einsammeln, z.B. `docker compose logs -f` oder ein Log-Collector, der stdout/stderr eines Containers ausliest.
 
+### Hinter einem Reverse-Proxy betreiben
+
+KonsensOmat terminiert selbst kein TLS und ist für den Betrieb hinter einem Reverse-Proxy (nginx, Caddy, Traefik, …) ausgelegt: Der Proxy nimmt HTTPS entgegen und leitet per HTTP an KonsensOmat weiter, üblicherweise mit den Headern `X-Forwarded-Proto` und `X-Forwarded-For`.
+
+`X-Forwarded-Proto: https` wird automatisch erkannt (steuert u.a. das `Secure`-Attribut der Cookies) - hier ist keine Konfiguration nötig.
+
+Für `X-Forwarded-For` (die tatsächliche Client-IP, die Rate-Limiting und Zugriffs-Logs verwenden) muss der Proxy explizit als vertrauenswürdig eingetragen werden, per `KONSENSOMAT_TRUSTED_PROXIES` in der `.env`-Datei oder als Umgebungsvariable:
+
+```
+KONSENSOMAT_TRUSTED_PROXIES=127.0.0.1,10.0.0.0/8
+```
+
+Kommagetrennte Liste aus einzelnen IPs und/oder CIDR-Bereichen (IPv4 und IPv6). Ohne diese Angabe (Standard) wird `X-Forwarded-For` ignoriert und immer die direkt verbindende IP verwendet - das ist bewusst die sichere Grundeinstellung, denn dieser Header lässt sich von jedem beliebig setzen, der den Server direkt erreicht. Erst wenn eine Anfrage nachweislich von einer der eingetragenen Proxy-Adressen kommt, wird die von ihr gesetzte Client-IP übernommen (bei mehreren verketteten vertrauenswürdigen Proxies wird von rechts nach links die erste nicht selbst vertrauenswürdige Adresse verwendet).
+
 ### Über Docker
 
 ```bash
@@ -200,7 +228,7 @@ Das Standard-`Dockerfile` baut auf `scratch` auf (kein Betriebssystem, keine She
 make docker-build-alpine
 ```
 
-Weitere `make`-Ziele (`make` ohne Argument bzw. ein Blick ins `Makefile` zeigen alle): `build-windows`, `build-rpi64`, `build-rpi32` für andere Zielplattformen, `test`, `run` (= `go run .`) und `clean`.
+Weitere `make`-Ziele (`make` ohne Argument bzw. ein Blick ins `Makefile` zeigen alle): `build-windows`, `build-rpi64`, `build-rpi32`, `build-mac` (macOS/Apple Silicon) für andere Zielplattformen, `test`, `run` (= `go run .`) und `clean`.
 
 ---
 
