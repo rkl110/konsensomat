@@ -1,0 +1,6 @@
+.env
+files/data/*
+!files/data/.gitkeep
+konsensomat.exe
+konsensomat-arm64
+konsensomat-armv7

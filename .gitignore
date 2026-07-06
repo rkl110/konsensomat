@@ -1,2 +1,20 @@
 /files/data/*
 !/files/data/.gitkeep
+
+/.env
+
+# Build artifacts (see Makefile / .forgejo workflows)
+/konsensomat
+/konsensomat.exe
+/konsensomat-arm64
+/konsensomat-armv7
+/dist/
+/pkg/
+*.zip
+
+# Go tooling
+*.test
+*.out
+
+# OS
+.DS_Store

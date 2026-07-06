@@ -1,0 +1,94 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go-build:
+    runs-on: docker
+    container:
+      image: golang:trixie
+
+    steps:
+      - name: Install Node.js dependencies
+        run: apt-get update && apt-get install -y curl nodejs
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: /go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Show Go version
+        run: go version
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Test
+        run: go test ./...
+
+      - name: Set version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Building version: ${VERSION}"
+
+      - name: Build binaries
+        run: |
+          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64         go build -ldflags="-X main.version=${VERSION}" -o konsensomat . &
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64         go build -ldflags="-X main.version=${VERSION}" -o konsensomat.exe . &
+          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64         go build -ldflags="-X main.version=${VERSION}" -o konsensomat-arm64 . &
+          CGO_ENABLED=0 GOOS=linux   GOARCH=arm   GOARM=7 go build -ldflags="-X main.version=${VERSION}" -o konsensomat-armv7 . &
+          wait
+
+      - name: Assemble artifacts
+        run: |
+          mkdir -p dist/linux-amd64 dist/linux-arm64 dist/linux-armv7 dist/windows-amd64
+
+          cp konsensomat                                               dist/linux-amd64/
+          cp konsensomat-arm64                                         dist/linux-arm64/konsensomat
+          cp konsensomat-armv7                                         dist/linux-armv7/konsensomat
+          chmod +x dist/linux-amd64/konsensomat dist/linux-arm64/konsensomat dist/linux-armv7/konsensomat
+
+          cp konsensomat.exe                                           dist/windows-amd64/
+
+          for dir in dist/linux-amd64 dist/linux-arm64 dist/linux-armv7; do
+            cp Dockerfile Dockerfile.alpine docker-compose.yml .env.example README.md LICENSE "$dir/"
+          done
+
+          cp .env.example README.md LICENSE dist/windows-amd64/
+
+      - name: Upload Linux amd64
+        uses: actions/upload-artifact@v3
+        with:
+          name: konsensomat-linux-amd64
+          path: dist/linux-amd64/
+          retention-days: 7
+
+      - name: Upload Linux arm64
+        uses: actions/upload-artifact@v3
+        with:
+          name: konsensomat-linux-arm64
+          path: dist/linux-arm64/
+          retention-days: 7
+
+      - name: Upload Linux armv7
+        uses: actions/upload-artifact@v3
+        with:
+          name: konsensomat-linux-armv7
+          path: dist/linux-armv7/
+          retention-days: 7
+
+      - name: Upload Windows amd64
+        uses: actions/upload-artifact@v3
+        with:
+          name: konsensomat-windows-amd64
+          path: dist/windows-amd64/
+          retention-days: 7
